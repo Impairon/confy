@@ -1,5 +1,5 @@
 ```
-                                     ﷽
+                                       ﷽
 ```
 #  Confy: The Dev's Dotfile Deployment System
 
