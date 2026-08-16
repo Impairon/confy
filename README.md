@@ -1,49 +1,92 @@
-🚀 Core Engine & Architecture
-The Monolithic Return: Reverted from a 6-file module split back to a single, beautifully organized main.rs. This eliminates all crate:: boilerplate and allows the App struct to use clean &mut self references for all state changes.
-The unzip Freeze Fix (Critical): Completely eradicated the TUI freezing when deploying encrypted archives. deploy_archive now passes a dummy password (confy_dummy_pass_123) if you don't provide one. If the archive is unencrypted, unzip ignores it. If it is encrypted and the password is wrong, unzip fails instantly instead of hanging while trying to read from /dev/tty.
-Silent External Commands: Every single external command (zip, unzip, git, bat, chafa, fzf) is now strictly wrapped in Stdio::null() and Stdio::piped(). They can no longer print ANSI escape codes or progress bars that corrupt the Ratatui alternate screen.
-📦 Smart Deployment Flow
-Interactive y/n Deploy Confirmation: Pressing D on a .zip file now runs a Dry Run directly in the preview pane. If successful, the bottom bar changes to: "Deploy (y=apply, n=cancel)". Pressing y executes the deployment with timestamped backups; pressing n or Esc cancels it.
-Native Password Prompting: If you press D on an encrypted .zip, unzip fails instantly. confy catches the PASSWORD_REQUIRED error and dynamically transforms the bottom bar into a password input field: "🔒 enter passwd (esc=cancel)". Once you type the password and hit Enter, it re-runs the dry run seamlessly.
-Conflict-Aware Backups: During --apply, confy hashes the target file on the new machine and compares it to the file inside the archive. If the hashes match (identical content), it skips the file completely—no unnecessary .bak files are created. If they differ, it creates a timestamped backup (e.g., config.kdl.bak_20231024_153005) before overwriting.
-⏳ Version Control & History
-Content-Hashing Snapshots: Snapshots are only taken when a file's contents actually change. It uses Rust's DefaultHasher to compare the current file against the latest snapshot. No disk space is wasted on empty edits.
-Version Diff View: In Version Mode (v), press d to view a colored diff (using diff --color=always -u) between the selected historical version and your current file. The output is cleanly rendered in the preview pane.
-Symlink-Safe Restores: When restoring a previous version, confy checks if the destination is a symlink. If it is, it writes through the symlink, ensuring your real config file is updated without breaking your folder structure.
-📝 Persistent State & Metadata
-Bookmarks (★): Press b to bookmark a file. Bookmarks are saved permanently to ~/.confy_state.json and survive terminal restarts.
-File Notes (📝): Press n to write a note for a file (e.g., "Laptop only", "Needs root"). Notes appear pinned to the top of the preview pane in yellow text.
-Recent Files (MRU): The last 5 files you edited are saved to state. Press R (Shift+R) to open an fzf popup of recent files and instantly jump to them.
-✂️ File Operations & UX
-Visual Select Mode (V): Enter a mode where moving j/k automatically highlights files (✓). Pressing Esc clears all selections, pressing V again exits the mode but keeps your selections.
-Dynamic Cyber-Cat: The bottom bar cat ฅ^•ﻌ•^ฅ changes expressions based on what you're doing. It holds scissors ✂️ when cutting, a clipboard 📋 when yanking, and sparkles ✨ when files are selected.
-Context-Aware Path Safety: The is_path_safe function runs on all Add, Rename, and Folder Creation actions. It canonicalizes paths to block ../../ directory traversal attacks, ensuring you never accidentally escape the ~/.confy sandbox.
-Smart Symlink Paste: Cut/Yank/Paste operations safely prevent pasting a folder into itself by comparing canonical absolute paths.
-⌨️ CLI Utilities
-confy -d <archive.zip> [--apply] [--pass <password>]: Deploy archives from the command line.
-confy discover: Auto-discovers and links famous dotfiles (Hyprland, Niri, Kitty, bashrc, etc.).
-confy doctor: Checks for missing dependencies (bat, chafa, fzf, ffmpeg, zip, unzip, diff) and scans for broken symlinks.
-confy git-export: Instantly initializes a git repo in ~/.confy and commits everything for pushing to GitHub.
-confy -s "<password>": Securely saves your sudo password (enforces 0600 permissions) so you can edit root-owned files without leaving the TUI.
+
+#  Confy: The Dev's Dotfile Deployment System
+
+`confy` is a blazingly fast, single-binary Rust TUI for managing dotfiles. It skips the bloat of heavy Git integrations or custom configuration languages. Instead, it uses standard symlinks, smart content-hashing for version control, and password-protected `.zip` archives for instant deployment to new machines.
 
 
+## 🌟 Core Features
 
-Text
-Pasted Content_1786873384003.txt
-TXT
-103.6 KB
-so the tool had a 400+ bug am not kidding and this is the summary and fix study it and this will be the start point from now on 
+- **🌳 Inline Tree View:** Navigate and expand directories directly in the list.
+- **⏳ Smart Version Control:** Content-hashed snapshots are taken *only* when a file actually changes. Includes a built-in `diff` viewer.
+- **📦 Encrypted Deployments:** Archive selected files into a password-protected `.zip` with a `manifest.json`, and deploy them to a new machine with smart, conflict-aware backups.
+- **🔒 Seamless Sudo:** Edit root-owned configs without leaving the TUI. If a file needs root, a password prompt appears right in the bottom bar.
+- **📝 Persistent State:** Bookmarks (`★`), per-file notes, and an MRU (Recent Files) list are saved to `~/.confy_state.json`.
+- **🎨 Adaptive UI:** Detects Truecolor  and falls back to ANSI 256. Features a dynamic kitty `ฅ^•ﻌ•^ฅ` that reacts to your actions.
 
-Thought Process
-I have studied the bug report carefully. Here is my understanding of the 9 critical bugs that were found and fixed:
+## 🛠️ The v4.0.0 Bug Hunt: 9 Critical Fixes
 
-The 9 Bugs (Root Cause Analysis)
-Cross-Device fs::rename Panic: ~/.confy (main drive) and /tmp (tmpfs) are on different filesystems. fs::rename panics on cross-device operations. Fix: Shell out to mv for deployments and cut/paste.
-Directory Symlink Overwrite Crash: fs::remove_file crashes on directory symlinks. Fix: Use fs::remove_dir_all for directories in deploy_archive.
-State Leakage in Deploy Mode: deploy_target and deploy_pass weren't cleared when starting a new deploy or canceling. Fix: Clear them in try_deploy and cancel_input.
-Silent Failures on Wrong Passwords: Wrong password in ArchivePrompt just failed silently. Fix: Catch PASSWORD_REQUIRED, display "Wrong password", clear input, let user retry.
-VisualSelect Wiping Manual Selections: Esc in VisualSelect wiped all selections including manual Space marks. Fix: Esc just exits the mode, preserves selections.
-Directory Selection Crash: toggle_selection allowed selecting directories, but archive_selected only looked at files. Fix: Restrict selection to files only.
-Stale Input on Error: Bad path in AddingPath stayed in the input bar, appending to bad text. Fix: Clear input on error.
-Leftover Temp Files: deploy_archive left /tmp/confy_deploy after dry runs. Fix: Clean up temp_dir unconditionally.
-Shell Injection: ! shell mode didn't escape quotes in file paths. Fix: Escape " to \" in paths.
+This version underwent a rigorous code audit. Nine logical bugs, race conditions, and edge-case crashes were identified and resolved:
+
+1. **Cross-Device `fs::rename` Panic**: Shelled out to `mv` for deployments/cut-paste to handle different filesystems (e.g., `/tmp` vs `~`).
+2. **Directory Symlink Overwrite Crash**: Used `fs::remove_dir_all` for directories in `deploy_archive` instead of crashing on `remove_file`.
+3. **State Leakage in Deploy Mode**: Explicitly cleared `deploy_target` and `deploy_pass` in `try_deploy` and `cancel_input`.
+4. **Silent Failures on Wrong Passwords**: `ArchivePrompt` now catches `PASSWORD_REQUIRED`, displays "Wrong password", and allows retries.
+5. **`VisualSelect` Wiping Manual Selections**: `Esc` now just exits the mode and preserves selections made with `Space`.
+6. **Directory Selection Crash**: Restricted `toggle_selection` to files only to match the archiver's capability.
+7. **Stale Input on Error**: Input bar now clears on error in `AddingPath` so you can type fresh.
+8. **Leftover Temp Files**: `deploy_archive` now cleans up `temp_dir` unconditionally.
+9. **Shell Injection / Escaping**: The `!` shell mode now escapes `"` to `\"` in file paths.
+
+##  Dependencies 
+
+To keep the Rust binary tiny and fast, `confy` shells out to standard Unix tools. Ensure you have these installed for the full experience:
+- `fzf` (Fuzzy finder for path completion)
+- `bat` (Syntax highlighting in previews)
+- `chafa` (Image/video ASCII rendering)
+- `ffmpeg` / `ffprobe` (Video metadata/thumbnails)
+- `zip` / `unzip` (Archive creation/deployment)
+- `diff` (Version comparison)
+
+## 📦 Installation
+
+1. Ensure you have the Rust toolchain installed (`rustup`).
+2. Clone and build:
+    ```bash
+    git clone https://github.com/YourUsername/confy.git
+    cd confy
+    cargo build --release
+    ```
+3. Move the binary to your path:
+    ```bash
+    cp target/release/confy ~/.local/bin/confy
+    ```
+
+## ⌨️ Quick Keybindings
+
+| Key | Action |
+| --- | ------ |
+| `j` / `k` / `↑` / `↓` | Navigate |
+| `Enter` | Edit File / Expand Folder |
+| `Right` / `Left` | Expand / Collapse Folder |
+| `a` | Add Symlink (Use `Tab` for `fzf`) |
+| `f` | Create Folder |
+| `r` | Rename |
+| `d` | Delete (Press twice to confirm) |
+| `c` / `p` | Cut / Paste |
+| `y` / `p` | Yank / Paste |
+| `v` | View Version History (Press `d` for diff) |
+| `Space` | Select File for Archiving |
+| `V` | Visual Select Mode |
+| `z` | Archive Selected to `.zip` |
+| `D` | Deploy `.zip` (Dry Run, then `y` to apply) |
+| `!` | Shell Mode (Run command on file) |
+| `b` | Toggle Bookmark |
+| `n` | Add/Edit Note |
+| `R` | Jump to Recent File |
+| `.` | Toggle Hidden Files |
+| `?` | Help Menu |
+| `q` / `Esc` | Quit / Cancel |
+
+## ⌨️ CLI Usage
+
+```bash
+confy                 # Launch TUI
+confy -l <path> -n <name> # Create a symlink
+confy -o <file/folder> # Open in default system app
+confy -e <file/folder> # Open in selected editor
+confy -d <archive.zip> [--apply] [--pass <password>] # Deploy archive
+confy doctor          # Check dependencies and symlinks
+confy discover        # Auto-link famous dotfiles
+confy git-export      # Init git repo and commit ~/.confy
+confy -s "<password>" # Save sudo password
+```
