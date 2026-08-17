@@ -1,7 +1,7 @@
 ```
                                          ﷽
 ```
-#  Confy: The Dev's Dotfile Deployment System
+#  Confy: The hopefully all in one solution of the mess called .config
 
 `confy` is a blazingly fast, single-binary Rust TUI for managing dotfiles. It skips the bloat of heavy Git integrations or custom configuration languages. Instead, it uses standard symlinks, smart content-hashing for version control, and password-protected `.zip` archives for instant deployment to new machines.
 
